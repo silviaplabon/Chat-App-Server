@@ -48,11 +48,12 @@ const bodyParser = require('body-parser');
   
   const app = require('express')()
   const cors = require('cors');
+  
   app.use(cors());
   const server = require('http').createServer(app)
   const io = require('socket.io')(server)
   app.use(bodyParser.json());
-  const port=3000;
+  const port= process.env.PORT ||4000;
   
   io.on('connection', socket => {
     socket.on('message', ({ name, message }) => {
