@@ -1,64 +1,93 @@
-// const express = require('express')
-// const app = express()
-const bodyParser = require('body-parser');
-// require('dotenv').config()
+const express = require("express");
+const app = express();
+const server = require("http").createServer(app);
+const io = require("socket.io").listen(server);
+const port = 4000;
+const cors = require('cors');
+app.use(cors());
+
+const { addUser, removeUser, getUser, getUsersInRoom, getFromAllUsers } = require('./users');
+
+io.on('connect', (socket) => {
+  console.log('connect')
+  socket.on('join', (name, callback) => {
+    const room = Date.now() + Math.floor(Math.random() * 1000000)
+    console.log(room)
+
+    const { error, user } = addUser({ id: socket.id, name, room });
+    if (error) return callback(error);
+    console.log(user.room, "user room information")
+    socket.join(user.room);
+    socket.emit('message', { user: 'admin', text: `${user.name}, welcome to room ${user.name}.`, delivered: true, id: 1122 });
+    socket.broadcast.to(user.room).emit('message', { user: 'admin', text: `${user.name} has joined!`, delivered: true, id: 1111 });
+    socket.emit('roomInformation', { room: user.room, name: user.name });
+    io.to(user.room).emit('roomData', { room: user.room, users: getUsersInRoom(user.room) });
+    callback();
+  });
 
 
-// // socket io import 
-// const io = require("socket.io");
+  socket.on('sendMessageReceiver', (data) => {
+    socket.broadcast.emit('messageReceiver', data)
+  });
 
-// const port = 500;
+  socket.on('sendRequest', (data,callback) => {
+    console.log(data, "data ")
+    const usersdata = getFromAllUsers(data.receiver);
+    console.log(usersdata, "users data", data.room, data.sender, data.receiver, "users data and dash dash")
+    const { error, user } = addUser({ id: usersdata.id, name: usersdata.name, room: data.room });
+    if (error) return callback(error);
+    console.log(user.room, "user room information")
+    socket.join(user.room);
+    // socket.broadcast.to(user.room).emit('sendRequestReceiver', {  sender: data.sender, room: data.room  });
+    callback();
+  })
 
-// const socket = io(http);
-// //create an event listener
+  socket.on('online', (data) => {
+    socket.broadcast.emit('online', data)
+  });
 
-// //To listen to messages
-// socket.on("connection", (socket)=>{
-  //     socket.on('message',({name,message})=>{
-    //         io.emit('message',{name,message})
-    //     })
-    // console.log("user connected");
-    // });
+  // user is typing or not typing operation
+  socket.on('typing', (data) => {
+    console.log(data, "data from typing")
+    socket.broadcast.emit('typing', data);
+  });
+
+  socket.on('sendMessage', (data, callback) => {
+    // console.log(message,name,"message name")
+    console.log(data, "data from send message")
+    socket.broadcast.to(data?.room).emit('message', { id: data?.id, user: data?.sender, text: data?.message, sendTime: data?.sendTime, delivered: false });
     
-    
-    // const port = process.env.PORT || 4200;
-    // const ObjectID = require('mongodb').ObjectID;
-    // const MongoClient = require('mongodb').MongoClient;
-    // const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.mcsxh.mongodb.net/${process.env.DB_NAME}?retryWrites=true&w=majority`;
-    // const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
-    // client.connect(err => {
-      //   const PopularDrinksCollection = client.db('Cocktail_collection').collection("PopularDrinks");
-      //   //////////////////////////////////////////////////////Inserting Home page Data///////////////////////////////////////////////////////
-      
-      
-      
-      
-      
-      // });
-      // app.listen(port, () => {
-        //   console.log(`Example app listening at http://localhost:${port}`)
-        // })
-        
-        
-        
-  
-        
-        
-        
-  
-  const app = require('express')()
-  const cors = require('cors');
-  
-  app.use(cors());
-  const server = require('http').createServer(app)
-  const io = require('socket.io')(server)
-  app.use(bodyParser.json());
-  const port= process.env.PORT ||4000;
-  
-  io.on('connection', socket => {
-    socket.on('message', ({ name, message }) => {
-      io.emit('message', { name, message })
-    })
-})
+    callback();
+  });
+
+
+
+  // Handler for 'received' event
+  io.on('received', function (options) {
+    console.log(options, "options from client")
+    // Emit 'delivered' event 
+    io.emit('delivered', options);
+  });
+
+  io.on('markSeen', function (options) {
+    const id = options.userId;
+    const user = getUser(id);
+    // Emit 'delivered' event
+    console.log(options, "options from client")
+    socket.emit('markedSeen', options);
+  });
+
+  socket.on('disconnect', () => {
+    const user = removeUser(socket.id);
+
+    console.log(socket.id, "socket id from remove user")
+    if (user) {
+      io.to(user.room).emit('message', { user: 'Admin', text: `${user.name} has left.` });
+      io.to(user.room).emit('offline', { state: 'offline', name: user.name });
+      io.to(user.room).emit('roomData', { room: user.room, users: getUsersInRoom(user.room) });
+    }
+  })
+});
 
 server.listen(port, () => console.log("server running on port:" + port));
+
