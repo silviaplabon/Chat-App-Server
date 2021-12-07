@@ -69,6 +69,8 @@ io.sockets.on('connect', (socket) => {
       roomId = sender?.room;
       console.log(roomId)
     }
+
+
     callback();
   })
 
